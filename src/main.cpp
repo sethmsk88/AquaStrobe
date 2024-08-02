@@ -1,13 +1,16 @@
 #include <Arduino.h>
 #include <FastLED.h>
+#include <SPI.h>
 
-#define LED_TYPE WS2812
-#define DATA_PIN 11
-#define COLOR_ORDER GRB
+#define LED_TYPE SK9822
+#define DATA_PIN 10  // GPIO7 = D4 - MUST USE GPIO NUMBER FOR FastLED.addLeds to work
+#define CLOCK_PIN SCK // GPIO48 = D13  SPI Serial clock pin = D13/SCK
+
+#define COLOR_ORDER BGR
 #define BTN_1_PIN 5  // New Pin: 9, Old Pin: 5
 #define BTN_2_PIN 8
 #define BTN_3_PIN 12 // New Pin: 7, Old Pin: 12
-#define NUM_LEDS 48 // 48 leds is the max number before the frame rate starts to drop
+#define NUM_LEDS 10 // 48 leds is the max number before the frame rate starts to drop
 
 /****
 enum TimerEvents {Idle, Expired};
@@ -124,9 +127,17 @@ void calculateFrames() {
 void setup() {
   // Serial.begin(115200); // This baud rate is unavailable in Arduino IDE Serial Monitor for some reason
   Serial.begin(9600); // Setting this baud rate so Ben can use Arduino IDE Serial Monitor
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  //FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  //FastLED.addLeds<LED_TYPE, DATA_PIN, CLOCK_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  // FastLED.addLeds<LED_TYPE, DATA_PIN, CLOCK_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.addLeds<LED_TYPE, DATA_PIN, CLOCK_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  //FastLED.addLeds<WS2812, DATA_PIN, RGB>(leds, NUM_LEDS);
+  // FastLED.addLeds(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 
-  FastLED.setBrightness(gamma(brightness)); // Set brightness to default value
+
+  //FastLED.setBrightness(gamma(brightness)); // Set brightness to default value
+  //fill_solid(leds, NUM_LEDS, 0);  // turn off LEDs
+  //FastLED.show();
 
   // Initialize buttons
   pinMode(BTN_1_PIN, INPUT_PULLUP);
@@ -414,29 +425,8 @@ void checkBtnPress()
   }
 }
 
-void loop() {
 
-  // Pulse frequency
-  // Pulse duration
-  // Pulse Intensiry
-/*
-  uint32_t currentMillis = millis();
-  if (blinkMe.expired(currentMillis) == Expired)
-  {
-    //blinkMe.trigger = ((uint32_t) map(analogRead(PotPin), 0, 1023, FlashTime[Min], FlashTime[Max]));
-
-    fill_solid(leds, NUM_LEDS, CRGB::Blue);
-    FastLED.show();
-
-    flashLed.now = currentMillis;
-  }
-  if (flashLed.expired(currentMillis) == Expired)
-  {
-    fill_solid(leds, NUM_LEDS, 0);
-    FastLED.show();
-  }
-  */
-
+void aquaStrobe() {
   if (iter8 < onFrames) {
     color = CRGB::Blue;
   }
@@ -450,8 +440,8 @@ void loop() {
     iter8 = 0;
   }
 
-  // fill_solid(leds, NUM_LEDS, color);
-  // FastLED.show();
+  fill_solid(leds, NUM_LEDS, color);
+  FastLED.show();
 
   calcFrameRate();
   checkBtnPress();
@@ -459,4 +449,41 @@ void loop() {
   EVERY_N_SECONDS(5) {
     printFrameRate();
   }
+}
+
+void testFrameRate() {  
+  static uint8_t h = 0;
+  for (int i = 0; i < 5; i++) {
+    leds[i] = CHSV(h, 255, 255);
+  }
+  h++;
+
+  FastLED.show();
+
+  calcFrameRate();
+
+  EVERY_N_SECONDS(5) {
+    printFrameRate();
+  }
+}
+
+void loop() {
+  aquaStrobe();
+
+  // testFrameRate();
+  /*
+  static CRGB c = CRGB::Red;
+  fill_solid(leds, NUM_LEDS, c);
+  FastLED.show();
+
+  EVERY_N_SECONDS(5) {
+    Serial.print(F("LEDs OFF"));
+    fill_solid(leds, NUM_LEDS, 0);
+    FastLED.show();
+    delay(3000);
+    Serial.print(F("LEDs ON"));
+    // c = c.r > 0 ? 0 : CRGB::Red;
+    // Serial.print(F("Change color: "));
+    // Serial.println(c.r);
+  }*/
 }
