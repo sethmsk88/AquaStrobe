@@ -10,6 +10,7 @@
             "includePath": [
                 "D:/code/AquaStrobe/include",
                 "D:/code/AquaStrobe/src",
+                "D:/code/AquaStrobe/.pio/libdeps/nanoatmega328new/ezButton/src",
                 "D:/code/AquaStrobe/.pio/libdeps/nanoatmega328new/FastLED/src",
                 "C:/Users/sethm/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
                 "C:/Users/sethm/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
@@ -25,6 +26,7 @@
                 "path": [
                     "D:/code/AquaStrobe/include",
                     "D:/code/AquaStrobe/src",
+                    "D:/code/AquaStrobe/.pio/libdeps/nanoatmega328new/ezButton/src",
                     "D:/code/AquaStrobe/.pio/libdeps/nanoatmega328new/FastLED/src",
                     "C:/Users/sethm/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
                     "C:/Users/sethm/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",

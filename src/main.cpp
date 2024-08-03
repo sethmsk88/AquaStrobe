@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <FastLED.h>
 #include <SPI.h>
+#include <ezButton.h>
 
 #define LED_TYPE SK9822
 #define DATA_PIN 10  // GPIO7 = D4 - MUST USE GPIO NUMBER FOR FastLED.addLeds to work
@@ -11,6 +12,15 @@
 #define BTN_2_PIN 8
 #define BTN_3_PIN 12 // New Pin: 7, Old Pin: 12
 #define NUM_LEDS 10 // 48 leds is the max number before the frame rate starts to drop
+
+#define DIRECTION_CW  0   // clockwise direction
+#define DIRECTION_CCW 1  // counter-clockwise direction
+#define ROT_CLK_PIN 11
+#define ROT_DT_PIN 12
+#define ROT_SW_PIN 13
+#define ROT2_CLK_PIN 5
+#define ROT2_DT_PIN 6
+#define ROT2_SW_PIN 9
 
 /****
 enum TimerEvents {Idle, Expired};
@@ -42,9 +52,10 @@ float freq = 60;  // 60 Hz
 float dutyCycle = .1;
 float fps = 500; // Some non-zero number. We will calculate the fps after startup
 float usPerFrame = 1; // Initialize with non-zero number
-float x = fps / freq;
+float x = 1;  //old value was (fps / freq);
 
 float freqDelta = 1;
+float refreshRateDelta = 1;
 float dutyCycleDelta = .01;
 int deltaDirection = 1; // -1 or 1
 
@@ -59,6 +70,18 @@ uint16_t dutyCycleChangeDelay = 100; // 100ms between duty cycle ticks
 CRGB color;
 CRGB leds[NUM_LEDS];
 
+int rot1Counter = 0;
+int rot1Direction = DIRECTION_CW;
+int rot1_CLK_state;
+int prev_rot1_CLK_state;
+
+int rot2Counter = 0;
+int rot2Direction = DIRECTION_CW;
+int rot2_CLK_state;
+int prev_rot2_CLK_state;
+
+ezButton rotaryButton(ROT_SW_PIN);
+ezButton rotaryButton2(ROT2_SW_PIN);
 
 /**********************************************************
  * Apply gamma correction to a color value
@@ -109,19 +132,9 @@ void changeBrightness(bool increase, uint8_t diff)
 void calculateFrames() {
   // Calculate the onCycles and offCycles based on the frequency and duty cycle
   //totalFrames = (uint8_t)(x / dutyCycle);  // Calculate the total number of frames required to accommdate the duty cycle
-  totalFrames = 1 / dutyCycle;  // Calculate the total number of frames required to accommdate the duty cycle
+  totalFrames = x / dutyCycle;  // Calculate the total number of frames required to accommdate the duty cycle
     // totalFrames = 1 / .2 = 5
   onFrames = totalFrames * dutyCycle; // 10 * .1 = 1
-
-  float strobeFrequency = fps / totalFrames;
-
-  Serial.print(F("Frames ON: "));
-  Serial.println(onFrames);
-  Serial.print(F("TotalFrames: "));
-  Serial.println(totalFrames);
-  Serial.print(F("Strobe Frequency: "));
-  Serial.print(strobeFrequency);
-  Serial.println(F(" Hz"));
 }
 
 void setup() {
@@ -140,9 +153,21 @@ void setup() {
   //FastLED.show();
 
   // Initialize buttons
-  pinMode(BTN_1_PIN, INPUT_PULLUP);
-  pinMode(BTN_2_PIN, INPUT_PULLUP);
-  pinMode(BTN_3_PIN, INPUT_PULLUP);
+  // pinMode(BTN_1_PIN, INPUT_PULLUP);
+  // pinMode(BTN_2_PIN, INPUT_PULLUP);
+  // pinMode(BTN_3_PIN, INPUT_PULLUP);
+
+  // Configure rotary encoder pins
+  pinMode(ROT_CLK_PIN, INPUT);
+  pinMode(ROT_DT_PIN, INPUT);
+  pinMode(ROT2_CLK_PIN, INPUT);
+  pinMode(ROT2_DT_PIN, INPUT);
+  rotaryButton.setDebounceTime(50);
+  rotaryButton2.setDebounceTime(50);
+
+  // read the initial state of the rotary encoder's CLK pin
+  prev_rot1_CLK_state = digitalRead(ROT_CLK_PIN);
+  prev_rot2_CLK_state = digitalRead(ROT2_CLK_PIN);
 
   calculateFrames();
 }
@@ -167,7 +192,19 @@ void calcFrameRate() {
 
 void printFrameRate() {
   Serial.print(fps); Serial.println(" fps");
-  Serial.print(usPerFrame); Serial.println("us/f");
+  // Serial.print(usPerFrame); Serial.println("us/f");
+  float strobeFrequency = fps / totalFrames;
+
+  Serial.print(F("\nFrames ON: "));
+  Serial.println(onFrames);
+  Serial.print(F("TotalFrames: "));
+  Serial.println(totalFrames);
+  Serial.print(F("Duty cycle: "));
+  Serial.print(dutyCycle*100);
+  Serial.println("%");
+  Serial.print(F("Strobe Frequency: "));
+  Serial.print(strobeFrequency);
+  Serial.println(F(" Hz"));
 }
 
 void changeDutyCycle(int deltaDirection) {
@@ -180,9 +217,21 @@ void changeDutyCycle(int deltaDirection) {
   else if (dutyCycle > maxDutyCycle)
     dutyCycle = maxDutyCycle;
 
-  Serial.print(F("Duty cycle: "));
-  Serial.print(dutyCycle*100);
-  Serial.println("%");
+  calculateFrames();
+}
+
+void changeRefreshRate(int deltaDirection) {
+  float minRefreshRate = 0;
+  float maxRefreshRate = 100;
+  x = x + (refreshRateDelta * deltaDirection);
+
+  if (x < minRefreshRate)
+    x = minRefreshRate;
+  else if (x > maxRefreshRate)
+    x = maxRefreshRate;
+
+  Serial.print(F("x: "));
+  Serial.println(x);
 
   calculateFrames();
 }
@@ -444,11 +493,12 @@ void aquaStrobe() {
   FastLED.show();
 
   calcFrameRate();
-  checkBtnPress();
+  // checkBtnPress();
 
-  EVERY_N_SECONDS(5) {
+  /*EVERY_N_SECONDS(5) {
     printFrameRate();
   }
+  */
 }
 
 void testFrameRate() {  
@@ -467,8 +517,99 @@ void testFrameRate() {
   }
 }
 
+void handleRotaryButton() {
+  // read the current state of the rotary encoder's CLK pin
+  rot1_CLK_state = digitalRead(ROT_CLK_PIN);
+
+  // If the state of CLK is changed, then pulse occurred
+  // React to only the rising edge (from LOW to HIGH) to avoid double count
+  if (rot1_CLK_state != prev_rot1_CLK_state && rot1_CLK_state == HIGH) {
+    // if the DT state is HIGH
+    // the encoder is rotating in counter-clockwise direction => decrease the counter
+    if (digitalRead(ROT_DT_PIN) == HIGH) {
+      rot1Counter--;
+      changeDutyCycle(-1);
+      rot1Direction = DIRECTION_CCW;
+    } else {
+      // the encoder is rotating in clockwise direction => increase the counter
+      rot1Counter++;
+      changeDutyCycle(1);
+      rot1Direction = DIRECTION_CW;
+    }
+
+    /*
+    Serial.print("Rotary Encoder:: direction: ");
+    if (rot1Direction == DIRECTION_CW)
+      Serial.print("Clockwise");
+    else
+      Serial.print("Counter-clockwise");
+
+    Serial.print(" - count: ");
+    Serial.println(rot1Counter);
+    */
+
+    printFrameRate();
+  }
+
+  // save last CLK state
+  prev_rot1_CLK_state = rot1_CLK_state;
+
+  if (rotaryButton.isPressed()) {
+    Serial.println("The button is pressed");
+  }
+}
+
+void handleRotaryButton2() {
+  // read the current state of the rotary encoder's CLK pin
+  rot2_CLK_state = digitalRead(ROT2_CLK_PIN);
+
+  // If the state of CLK is changed, then pulse occurred
+  // React to only the rising edge (from LOW to HIGH) to avoid double count
+  if (rot2_CLK_state != prev_rot2_CLK_state && rot2_CLK_state == HIGH) {
+    // if the DT state is HIGH
+    // the encoder is rotating in counter-clockwise direction => decrease the counter
+    if (digitalRead(ROT2_DT_PIN) == HIGH) {
+      rot2Counter--;
+      changeRefreshRate(-1);
+      rot2Direction = DIRECTION_CCW;
+    } else {
+      // the encoder is rotating in clockwise direction => increase the counter
+      rot2Counter++;
+      changeRefreshRate(1);
+      rot2Direction = DIRECTION_CW;
+    }
+
+    /*
+    Serial.print("Rotary Encoder:: direction: ");
+    if (rot2Direction == DIRECTION_CW)
+      Serial.print("Clockwise");
+    else
+      Serial.print("Counter-clockwise");
+
+    Serial.print(" - count: ");
+    Serial.println(rot2Counter);
+    */
+
+    printFrameRate();
+  }
+
+  // save last CLK state
+  prev_rot2_CLK_state = rot2_CLK_state;
+
+  if (rotaryButton.isPressed()) {
+    Serial.println("The button is pressed");
+  }
+}
+
 void loop() {
+  rotaryButton.loop(); // MUST call the loop() function first
+  rotaryButton2.loop(); // MUST call the loop() function first
+
+  handleRotaryButton();
+  handleRotaryButton2();
+
   aquaStrobe();
+
 
   // testFrameRate();
   /*
